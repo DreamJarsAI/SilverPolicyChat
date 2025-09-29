@@ -1,0 +1,37 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+
+# Virtual environments and local settings
+.venv/
+.env*
+.python-version
+
+# Application secrets and credentials
+.env
+.openai*
+
+# Local databases and runtime data
+policy_vectors.db*
+*.sqlite3
+*.db
+*.db-journal
+
+# Tooling caches
+.cache/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.huggingface/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

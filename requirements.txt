@@ -1,0 +1,9 @@
+gradio>=4.29.0
+openai>=1.109.1
+openai-agents>=0.3.2
+pdfplumber>=0.11.0
+pgvector>=0.2.5
+psycopg2-binary>=2.9.9
+SQLAlchemy>=2.0
+numpy>=1.26
+python-dotenv>=1.0.1

@@ -1,51 +1,74 @@
 # School Policy Assistant
-A Gradio-powered chatbot that answers questions about school policies using retrieval-augmented generation (RAG) over local PDF documents.
+A Gradio-powered chatbot that answers students’ questions about school policies using OpenAI’s Agents SDK, GPT-5-nano, and a Postgres/pgvector knowledge base.
 
 ## Features
-- Vector search over PDF policies using the `intfloat/e5-base-v2` embedding model.
-- PDF parsing via `pdfplumber`, with table rows flattened into text for retrieval.
-- Automatic cleaning of headers, footers, and page numbers before indexing.
-- Sentence-aware chunking with word-overlap to preserve context across responses.
-- Citation-backed responses that list the policy sources used.
-- Conversational memory so students can ask follow-up questions without repeating context.
-- Ready for Hugging Face Spaces deployment.
+- **OpenAI Agents SDK** orchestrates GPT-5-nano with structured tool calls for grounded, citation-backed answers.
+- **OpenAI `text-embedding-large` embeddings** stored in Postgres with `pgvector` for scalable similarity search.
+- **AI-assisted intent detection** routes greetings and catalog questions directly to a policy inventory.
+- **PDF ingestion pipeline** cleans headers/footers and preserves table content via `pdfplumber` with sentence-aware chunking.
+- **Render-ready deployment** using environment-driven configuration and a Postgres backing store.
 
 ## Requirements
 - Python 3.10+
-- `pip install -r requirements.txt`
-- Policy PDFs stored in `policies/`
-- Hugging Face API token (for the text generation model)
+- Postgres 14+ with the `vector` extension enabled
+- OpenAI API access (models: `gpt-5-nano`, `text-embedding-large`)
 
 ## Setup
-1. Create and activate a virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`
-3. Place your policy PDFs in `policies/` (filenames become document IDs; metadata titles are used when present).
-4. Duplicate `.env.example` to `.env` and set your Hugging Face token. The app automatically loads `HF_API_TOKEN` (or `HUGGINGFACEHUB_API_TOKEN`) on startup.
-5. Build the local vector store so the app can reuse it at runtime:
+1. **Install dependencies**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+2. **Configure environment variables**
+   - Copy `.env.example` → `.env`
+   - Provide `OPENAI_API_KEY` (and optionally `OPENAI_ORGANIZATION` / `OPENAI_PROJECT`)
+   - Set a database URL: production uses `DATABASE_URL` (Postgres), while local testing defaults to an on-disk SQLite database at `app/policy_vectors.db` but can be overridden with `SQLALCHEMY_DATABASE_URL`
+3. **Prepare Postgres**
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
+4. **Add policy PDFs** to `policies/` (filenames become document titles).
+5. **Embed and store policies**
    ```bash
    python build_index.py --rebuild
    ```
-   The Chroma files are written to `vector_store/`; they are git-ignored by default, so rebuild them after cloning with `python build_index.py --rebuild`.
+   Re-run after any policy changes to refresh embeddings in Postgres.
+
+### Version Control Notes
+- `.gitignore` excludes secrets, virtual environments, and the local SQLite cache (`policy_vectors.db*`) so the repository is safe to push to GitHub.
+- Keep `.env` and any credential files out of commits; use Render/hosting dashboards to configure production secrets.
+- Commit the contents of `policies/` only if the PDFs are meant for distribution; otherwise add them to `.gitignore` or store them elsewhere.
 
 ## Running Locally
 ```bash
 python app.py
 ```
-The Gradio UI launches at `http://localhost:7860`. Ask a policy question to start the conversation. Use the clear button to reset memory.
-If you need to re-embed documents on the fly, run `FORCE_REBUILD_INDEX=1 python app.py` so the app rebuilds the Chroma store before starting.
+Visit `http://localhost:7860` to chat. Greetings or catalog questions yield the indexed policy list; substantive questions trigger the OpenAI agent and return cited excerpts.
 
-## Deploying to Hugging Face Spaces
-- Upload the entire `app/` folder (including `policies/`, `policy_rag.py`, `app.py`, and `requirements.txt`).
-- Set the Space SDK to “Gradio” and the Python version to 3.10 or later.
-- Configure a secret named `HF_API_TOKEN` with access to `Qwen/Qwen2.5-7B-Instruct` (or adjust `generator_model` in `app.py` to a model your token can reach).
-- When preparing a deployment (e.g., to Hugging Face Spaces), generate the embeddings with `python build_index.py --rebuild` and upload the resulting `vector_store/` artifacts manually if the host expects them.
+## Deploying to Render.com
+1. Provision Postgres with `pgvector` and capture the `DATABASE_URL`.
+2. Configure environment variables (`OPENAI_API_KEY`, optional organization/project, `DATABASE_URL`).
+3. Run `python build_index.py --rebuild` in a Render job to seed embeddings.
+4. Launch the web service with `python app.py`.
 
 ## Architecture Notes
-- `policy_rag.py` handles PDF ingestion, cleaning, chunking, embedding, and ChromaDB indexing.
-- Embeddings default to `intfloat/e5-base-v2`, a lightweight model that balances retrieval quality with quick CPU startup (override `embed_model` in `PolicyChatbot` if needed).
-- Document titles in the vector metadata mirror the underlying PDF filenames, making citations easy to trace back to the original files.
-- `app.py` instantiates the vector store, performs retrieval, formats prompts, calls the Hugging Face Inference API, and serves the Gradio UI.
-- Responses use `Qwen/Qwen2.5-7B-Instruct` via the Hugging Face Inference API by default, and you can swap to any other hosted chat model through the `generator_model` parameter.
-- Responses append a “Sources” block listing every cited policy title and page number so answers remain grounded.
-- Conversation memory feeds the last few user questions back into retrieval, enabling coherent follow-up exchanges.
-- The vector store persists under `vector_store/`; rebuild it locally as needed so retrieval stays warm on first request.
+- `config.py` centralises settings (OpenAI models, Postgres URL, chunk sizes).
+- `policy_processing.py` discovers PDFs and produces cleaned chunks.
+- `policy_store.py` persists documents, chunks, and embeddings via SQLAlchemy (SQLite locally, Postgres in production).
+- `policy_agent.py` defines the OpenAI Agent with retrieval/catalog tools and intent heuristics.
+- `build_index.py` ingests PDFs and stores embeddings via OpenAI’s `text-embedding-large` model.
+- `app.py` serves the Gradio UI and proxies requests through the agent runner.
+
+## Data Refresh Checklist
+1. Update PDFs in `policies/`.
+2. Run `python build_index.py --rebuild`.
+3. Restart the app (or redeploy).
+
+## Testing Checklist
+- Ensure `.env` contains valid OpenAI and Postgres credentials.
+- Run ingestion and confirm chunk counts in the logs.
+- Start `python app.py` and verify:
+  - Greetings list all indexed policies.
+  - Policy questions return cited answers.
+  - Clearing the chat resets history.
