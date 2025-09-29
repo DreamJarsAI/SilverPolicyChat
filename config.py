@@ -16,6 +16,14 @@ class Settings:
     database_url: str
     chunk_size: int = 220
     chunk_overlap: int = 40
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = False
+    smtp_use_ssl: bool = False
+    smtp_dev_mode: bool = False
 
 
 def load_settings() -> Settings:
@@ -43,6 +51,15 @@ def load_settings() -> Settings:
             "to enable persistence."
         )
 
+    def _bool(name: str, default: bool = False) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_port_int = int(smtp_port) if smtp_port else None
+
     return Settings(
         openai_api_key=api_key,
         openai_organization=os.getenv("OPENAI_ORGANIZATION"),
@@ -52,4 +69,12 @@ def load_settings() -> Settings:
         database_url=database_url,
         chunk_size=int(os.getenv("CHUNK_SIZE", "220")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "40")),
+        smtp_host=os.getenv("SMTP_HOST"),
+        smtp_port=smtp_port_int,
+        smtp_username=os.getenv("SMTP_USERNAME"),
+        smtp_password=os.getenv("SMTP_PASSWORD"),
+        smtp_from_email=os.getenv("SMTP_FROM_EMAIL"),
+        smtp_use_tls=_bool("SMTP_USE_TLS", default=True),
+        smtp_use_ssl=_bool("SMTP_USE_SSL", default=False),
+        smtp_dev_mode=_bool("SMTP_DEV_MODE", default=False),
     )

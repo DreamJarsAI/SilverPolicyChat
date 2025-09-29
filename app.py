@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import gradio as gr
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from auth_service import AuthService, EmailSender, EmailSettings, SecretHasher
 from config import load_settings
 from policy_agent import (
     PolicyAgentContext,
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
-def _bootstrap() -> tuple[PolicyAgentContext, object]:
+def _bootstrap() -> tuple[PolicyAgentContext, object, AuthService]:
     settings = load_settings()
     client = OpenAI(
         api_key=settings.openai_api_key,
@@ -42,11 +43,13 @@ def _bootstrap() -> tuple[PolicyAgentContext, object]:
         logger.info("Schema check skipped: %s", exc)
     agent = build_agent(settings)
     context = PolicyAgentContext(store=store, client=client, settings=settings)
-    return context, agent
+    email_sender = EmailSender(EmailSettings.from_settings(settings))
+    auth_service = AuthService(store, email_sender, SecretHasher())
+    return context, agent, auth_service
 
 
 def create_interface() -> gr.Blocks:
-    context, agent = _bootstrap()
+    context, agent, auth_service = _bootstrap()
     runner = OpenAIAgentRunner()
 
     custom_css = """
@@ -289,56 +292,370 @@ def create_interface() -> gr.Blocks:
             elem_classes=["hero-block"],
         )
 
-        with gr.Row(elem_classes=["layout-row"]):
-            with gr.Column(scale=3, elem_classes=["chat-column"]):
-                chat = gr.Chatbot(
-                    label="Policy Assistant",
-                    type="messages",
-                    height=540,
-                    show_copy_button=True,
-                    elem_classes=["chatbot-panel"],
-                )
-                history_state = gr.State([])
+        session_state = gr.State({"authenticated": False, "username": None, "email": None})
+        history_state = gr.State([])
+        registration_state = gr.State({"username": None, "email": None, "code_sent": False})
+        reset_state = gr.State({"email": None, "code_sent": False})
 
-                with gr.Group(elem_classes=["input-card"]):
-                    message_box = gr.Textbox(
-                        label="Your question",
-                        placeholder="Ask about attendance, grading, scholarships, ...",
-                        lines=4,
-                        max_lines=8,
-                        elem_classes=["question-box"],
+        with gr.Row():
+            status_bar = gr.Markdown("Not signed in.")
+            logout_button = gr.Button("Log out", variant="secondary", visible=False)
+
+        with gr.Tabs():
+            with gr.Tab("Login"):
+                login_username = gr.Textbox(label="Username", placeholder="nyustudent")
+                login_password = gr.Textbox(
+                    label="Password",
+                    type="password",
+                    placeholder="Enter your password",
+                )
+                login_button = gr.Button("Log in", variant="primary")
+                login_feedback = gr.Markdown(visible=False)
+
+            with gr.Tab("Register"):
+                register_username = gr.Textbox(
+                    label="Choose a username",
+                    placeholder="nyustudent",
+                )
+                register_email = gr.Textbox(
+                    label="NYU email",
+                    placeholder="netid@nyu.edu",
+                )
+                send_registration_code = gr.Button("Send verification code", variant="primary")
+                registration_feedback = gr.Markdown(visible=False)
+                register_code = gr.Textbox(
+                    label="6-digit verification code",
+                    placeholder="Enter the code from your email",
+                    visible=False,
+                )
+                register_password = gr.Textbox(
+                    label="Create a strong password",
+                    placeholder="At least 12 characters with mixed case, numbers, symbols",
+                    type="password",
+                    visible=False,
+                )
+                complete_registration = gr.Button(
+                    "Complete registration", variant="primary", visible=False
+                )
+
+            with gr.Tab("Forgot username/password"):
+                reset_email = gr.Textbox(
+                    label="NYU email",
+                    placeholder="netid@nyu.edu",
+                )
+                send_reset_code = gr.Button("Send reset email", variant="primary")
+                reset_feedback = gr.Markdown(visible=False)
+                reset_code = gr.Textbox(
+                    label="6-digit verification code",
+                    placeholder="Enter the code from your email",
+                    visible=False,
+                )
+                reset_password = gr.Textbox(
+                    label="New password",
+                    type="password",
+                    placeholder="At least 12 characters with mixed case, numbers, symbols",
+                    visible=False,
+                )
+                complete_reset = gr.Button("Reset password", variant="primary", visible=False)
+
+        with gr.Group(visible=False) as chat_container:
+            with gr.Row(elem_classes=["layout-row"]):
+                with gr.Column(scale=3, elem_classes=["chat-column"]):
+                    chat = gr.Chatbot(
+                        label="Policy Assistant",
+                        type="messages",
+                        height=540,
+                        show_copy_button=True,
+                        elem_classes=["chatbot-panel"],
                     )
-                    with gr.Row(elem_classes=["send-row"]):
-                        send_button = gr.Button("Send", variant="primary", scale=0)
-                        clear_button = gr.Button(
-                            "Clear conversation",
-                            variant="secondary",
-                            scale=0,
-                        )
 
-            with gr.Column(scale=2, elem_classes=["info-column"]):
-                gr.Markdown(
-                    """
-                    <div class="info-card">
-                        <h3>How to get the most out of the assistant</h3>
-                        <ul>
-                            <li>Frame your scenario with key details like grade level, policy area, and stakeholders.</li>
-                            <li>Ask follow-up questions to clarify interpretations or explore alternative actions.</li>
-                            <li>Use the Clear button to start a new conversation when switching topics.</li>
-                        </ul>
-                    </div>
-                    """,
-                    elem_classes=["info-card"],
+                    with gr.Group(elem_classes=["input-card"]):
+                        message_box = gr.Textbox(
+                            label="Your question",
+                            placeholder="Ask about attendance, grading, scholarships, ...",
+                            lines=4,
+                            max_lines=8,
+                            elem_classes=["question-box"],
+                            interactive=False,
+                        )
+                        with gr.Row(elem_classes=["send-row"]):
+                            send_button = gr.Button("Send", variant="primary", scale=0, interactive=False)
+                            clear_button = gr.Button(
+                                "Clear conversation",
+                                variant="secondary",
+                                scale=0,
+                            )
+
+                with gr.Column(scale=2, elem_classes=["info-column"]):
+                    gr.Markdown(
+                        """
+                        <div class="info-card">
+                            <h3>How to get the most out of the assistant</h3>
+                            <ul>
+                                <li>Frame your scenario with key details like grade level, policy area, and stakeholders.</li>
+                                <li>Ask follow-up questions to clarify interpretations or explore alternative actions.</li>
+                                <li>Use the Clear button to start a new conversation when switching topics.</li>
+                            </ul>
+                        </div>
+                        """,
+                        elem_classes=["info-card"],
+                    )
+
+        def handle_login(
+            username: str,
+            password: str,
+            current_session: Dict[str, Any],
+        ) -> tuple[Any, ...]:
+            success, message, payload = auth_service.authenticate(username, password)
+            if success and payload:
+                session = {"authenticated": True, **payload}
+                return (
+                    gr.update(value=f"✅ {message}", visible=True),
+                    session,
+                    gr.update(value=f"Signed in as **{payload['username']}**."),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(value="", interactive=True),
+                    gr.update(interactive=True),
+                    gr.update(value=""),
+                    gr.update(value=""),
                 )
+
+            session = {"authenticated": False, "username": None, "email": None}
+            return (
+                gr.update(value=f"❌ {message}", visible=True),
+                session,
+                gr.update(value="Not signed in."),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value="", interactive=False),
+                gr.update(interactive=False),
+                gr.update(value=username),
+                gr.update(value=""),
+            )
+
+        login_button.click(
+            handle_login,
+            inputs=[login_username, login_password, session_state],
+            outputs=[
+                login_feedback,
+                session_state,
+                status_bar,
+                logout_button,
+                chat_container,
+                message_box,
+                send_button,
+                login_username,
+                login_password,
+            ],
+        )
+
+        def handle_logout(current_session: Dict[str, Any]) -> tuple[Any, ...]:
+            _ = current_session
+            return (
+                gr.update(value="You have been signed out.", visible=True),
+                {"authenticated": False, "username": None, "email": None},
+                gr.update(value="Not signed in."),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value="", interactive=False),
+                gr.update(interactive=False),
+                [],
+                [],
+            )
+
+        logout_button.click(
+            handle_logout,
+            inputs=[session_state],
+            outputs=[
+                login_feedback,
+                session_state,
+                status_bar,
+                logout_button,
+                chat_container,
+                message_box,
+                send_button,
+                chat,
+                history_state,
+            ],
+        )
+
+        def start_registration(
+            username: str,
+            email: str,
+            state: Dict[str, Any],
+        ) -> tuple[Any, ...]:
+            success, message, payload = auth_service.initiate_registration(username, email)
+            if success and payload:
+                new_state = {"code_sent": True, **payload}
+                return (
+                    gr.update(value=f"✅ {message}", visible=True),
+                    new_state,
+                    gr.update(value="", visible=True),
+                    gr.update(value="", visible=True),
+                    gr.update(visible=True),
+                    gr.update(value=payload["username"]),
+                    gr.update(value=payload["email"]),
+                )
+
+            keep_state = state or {"code_sent": False, "username": None, "email": None}
+            active = bool(keep_state.get("code_sent"))
+            return (
+                gr.update(value=f"❌ {message}", visible=True),
+                keep_state,
+                gr.update(value="", visible=active),
+                gr.update(value="", visible=active),
+                gr.update(visible=active),
+                gr.update(value=username),
+                gr.update(value=email),
+            )
+
+        send_registration_code.click(
+            start_registration,
+            inputs=[register_username, register_email, registration_state],
+            outputs=[
+                registration_feedback,
+                registration_state,
+                register_code,
+                register_password,
+                complete_registration,
+                register_username,
+                register_email,
+            ],
+        )
+
+        def finish_registration(
+            code: str,
+            password: str,
+            state: Dict[str, Any],
+        ) -> tuple[Any, ...]:
+            success, message = auth_service.complete_registration(state or {}, code, password)
+            if success:
+                return (
+                    gr.update(value=f"✅ {message}", visible=True),
+                    {"username": None, "email": None, "code_sent": False},
+                    gr.update(value="", visible=False),
+                    gr.update(value="", visible=False),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                    gr.update(value=""),
+                )
+
+            keep_state = state or {"username": None, "email": None, "code_sent": False}
+            return (
+                gr.update(value=f"❌ {message}", visible=True),
+                keep_state,
+                gr.update(value=code, visible=True),
+                gr.update(value="", visible=True),
+                gr.update(visible=True),
+                gr.update(value=keep_state.get("username") or ""),
+                gr.update(value=keep_state.get("email") or ""),
+            )
+
+        complete_registration.click(
+            finish_registration,
+            inputs=[register_code, register_password, registration_state],
+            outputs=[
+                registration_feedback,
+                registration_state,
+                register_code,
+                register_password,
+                complete_registration,
+                register_username,
+                register_email,
+            ],
+        )
+
+        def start_reset(email: str, state: Dict[str, Any]) -> tuple[Any, ...]:
+            success, message, payload = auth_service.initiate_password_reset(email)
+            if success and payload:
+                new_state = {"code_sent": True, **payload}
+                return (
+                    gr.update(value=f"✅ {message}", visible=True),
+                    new_state,
+                    gr.update(value="", visible=True),
+                    gr.update(value="", visible=True),
+                    gr.update(visible=True),
+                    gr.update(value=payload["email"]),
+                )
+
+            keep_state = state or {"email": None, "code_sent": False}
+            active = bool(keep_state.get("code_sent"))
+            return (
+                gr.update(value=f"❌ {message}", visible=True),
+                keep_state,
+                gr.update(value="", visible=active),
+                gr.update(value="", visible=active),
+                gr.update(visible=active),
+                gr.update(value=email),
+            )
+
+        send_reset_code.click(
+            start_reset,
+            inputs=[reset_email, reset_state],
+            outputs=[
+                reset_feedback,
+                reset_state,
+                reset_code,
+                reset_password,
+                complete_reset,
+                reset_email,
+            ],
+        )
+
+        def finish_reset(
+            code: str,
+            password: str,
+            state: Dict[str, Any],
+        ) -> tuple[Any, ...]:
+            success, message = auth_service.complete_password_reset(state or {}, code, password)
+            if success:
+                return (
+                    gr.update(value=f"✅ {message}", visible=True),
+                    {"email": None, "code_sent": False},
+                    gr.update(value="", visible=False),
+                    gr.update(value="", visible=False),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                )
+
+            keep_state = state or {"email": None, "code_sent": False}
+            return (
+                gr.update(value=f"❌ {message}", visible=True),
+                keep_state,
+                gr.update(value=code, visible=True),
+                gr.update(value="", visible=True),
+                gr.update(visible=True),
+                gr.update(value=keep_state.get("email") or ""),
+            )
+
+        complete_reset.click(
+            finish_reset,
+            inputs=[reset_code, reset_password, reset_state],
+            outputs=[
+                reset_feedback,
+                reset_state,
+                reset_code,
+                reset_password,
+                complete_reset,
+                reset_email,
+            ],
+        )
 
         async def respond(
             user_message: str,
             chat_history: List[dict],
             rag_history: List[Tuple[str, str]],
+            session: Dict[str, Any],
         ):
             rag_history = list(rag_history or [])
             normalized = user_message.strip()
             cleared_input = gr.update(value="")
+
+            if not session or not session.get("authenticated"):
+                yield cleared_input, chat_history, rag_history
+                return
+
             if not normalized:
                 yield cleared_input, chat_history, rag_history
                 return
@@ -358,7 +675,6 @@ def create_interface() -> gr.Blocks:
             prior_history = list(rag_history)
             rag_history.append((normalized, ""))
 
-            # Show the user turn and placeholder assistant message immediately.
             yield cleared_input, updated_chat, rag_history
 
             emitted_chunk = False
@@ -370,15 +686,12 @@ def create_interface() -> gr.Blocks:
 
             rag_history[-1] = (normalized, assistant_entry["content"])
             if not emitted_chunk:
-                # Ensure the final state is delivered even if no streaming chunks were emitted.
                 yield cleared_input, updated_chat, rag_history
-
-            return
 
         for trigger in (message_box.submit, send_button.click):
             trigger(
                 respond,
-                inputs=[message_box, chat, history_state],
+                inputs=[message_box, chat, history_state, session_state],
                 outputs=[message_box, chat, history_state],
             )
 
