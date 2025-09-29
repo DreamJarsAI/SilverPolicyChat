@@ -4,10 +4,23 @@ from __future__ import annotations
 import contextlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterator, List, Sequence
 
 import numpy as np
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, create_engine, delete, select
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    delete,
+    func,
+    select,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapped, Session, declarative_base, mapped_column, relationship, sessionmaker
 from sqlalchemy.types import TypeDecorator
@@ -99,6 +112,30 @@ class Embedding(Base):
 
     chunk: Mapped[Chunk] = relationship("Chunk", back_populates="embedding")
 
+
+class UserAccount(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verification_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_code_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    reset_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 @dataclass
 class RetrievedChunk:
