@@ -3,8 +3,10 @@ version: 1
 tasks:
   web:
     description: Launch the School Policy Assistant UI in Codex Cloud
-    workdir: app
-    command: pip install -r requirements.txt && python app.py
+    command:
+      - bash
+      - -lc
+      - pip install -r requirements.txt && python app.py
     env:
       - OPENAI_API_KEY
       - OPENAI_ORGANIZATION

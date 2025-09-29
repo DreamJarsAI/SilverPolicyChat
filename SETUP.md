@@ -55,7 +55,7 @@ Add integration tests that stub OpenAI responses for CI environments without net
 4. Configure the web service with `python app.py` as the start command.
 
 ## Codex Cloud Notes
-- The included `codex.yaml` defines a `web` task that installs dependencies and launches the Gradio app on port 7860.
+- The included `codex.yaml` defines a `web` task that installs dependencies and launches the Gradio app on port 7860 from the repo root.
 - Set the same environment variables you use locally (OpenAI keys, database URL) in Codex Cloud before starting the task.
 
 ## Troubleshooting
