@@ -4,12 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import List
+from typing import AsyncIterator, List
 
 from agents import Agent
 from agents.run import AgentRunner
 from agents.run_context import RunContextWrapper
 from agents.tool import function_tool
+from agents.items import ItemHelpers, MessageOutputItem
+from agents.stream_events import RunItemStreamEvent
 from openai import OpenAI
 
 from config import Settings
@@ -180,6 +182,22 @@ def run_agent(
     history: List[tuple[str, str]],
     message: str,
 ) -> str:
+    async def _run() -> str:
+        collected: list[str] = []
+        async for chunk in stream_agent(agent, runner, context, history, message):
+            collected.append(chunk)
+        return "".join(collected)
+
+    return asyncio.run(_run())
+
+
+async def stream_agent(
+    agent: Agent[PolicyAgentContext],
+    runner: AgentRunner,
+    context: PolicyAgentContext,
+    history: List[tuple[str, str]],
+    message: str,
+) -> AsyncIterator[str]:
     conversation_lines: List[str] = []
     for user, assistant in history:
         conversation_lines.append(f"Student: {user}")
@@ -187,8 +205,46 @@ def run_agent(
     conversation_lines.append(f"Student: {message}")
     prompt = "\n".join(conversation_lines)
 
-    async def _run() -> str:
-        run_result = await runner.run(agent, prompt, context=context)
-        return run_result.final_output_as(str)
+    streamed = runner.run_streamed(agent, prompt, context=context)
+    assistant_text = ""
 
-    return asyncio.run(_run())
+    try:
+        async for event in streamed.stream_events():
+            if not isinstance(event, RunItemStreamEvent):
+                continue
+
+            if event.name != "message_output_created":
+                continue
+
+            if not isinstance(event.item, MessageOutputItem):
+                continue
+
+            full_text = ItemHelpers.text_message_output(event.item)
+            if not full_text:
+                continue
+
+            if full_text.startswith(assistant_text):
+                delta = full_text[len(assistant_text) :]
+            else:
+                delta = full_text
+
+            assistant_text = full_text
+
+            if delta:
+                yield delta
+
+        if streamed.final_output is not None:
+            final_text = streamed.final_output_as(str)
+            if final_text:
+                if final_text.startswith(assistant_text):
+                    delta = final_text[len(assistant_text) :]
+                else:
+                    delta = final_text
+
+                assistant_text = final_text
+
+                if delta:
+                    yield delta
+    finally:
+        if not streamed.is_complete:
+            streamed.cancel()
