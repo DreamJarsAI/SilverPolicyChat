@@ -41,7 +41,7 @@ A Gradio-powered chatbot that answers students’ questions about school policie
 - Commit the contents of `policies/` only if the PDFs are meant for distribution; otherwise add them to `.gitignore` or store them elsewhere.
 
 ### Codex Cloud Task
-- The repo includes `codex.yaml`, defining a `web` task that installs requirements and runs `python app.py` from the repository root.
+- The repo includes `codex.yaml`, defining a `web` task that installs dependencies and then runs `python app.py` from the repository root.
 - Before launching the task, set the required environment variables (`OPENAI_API_KEY`, optional `OPENAI_ORGANIZATION`/`OPENAI_PROJECT`, and `DATABASE_URL` when targeting Postgres) in the Codex Cloud UI.
 - Start the cloud run via the “Run in the cloud” button and select the `web` task; Gradio will be served on port 7860.
 
