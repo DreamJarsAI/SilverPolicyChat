@@ -14,6 +14,7 @@ All notable changes to this project are documented here. This project follows se
 - Configuration now accepts `SQLALCHEMY_DATABASE_URL`/`SQLALCHEMY_DATABASE_URI` as a local testing fallback for `DATABASE_URL`.
 - Policy persistence now uses SQLAlchemy with a default on-disk SQLite database (`app/policy_vectors.db`) for local workflows.
 - Repository hygiene tightened for GitHub (expanded `.gitignore`, documentation callouts).
+- Added Codex Cloud task definition (`codex.yaml`) and documentation for launching the hosted Gradio app.
 
 ### Removed
 - Local ChromaDB vector store and sentence-transformer dependency.

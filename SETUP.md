@@ -54,6 +54,10 @@ Add integration tests that stub OpenAI responses for CI environments without net
 3. Run `python build_index.py --rebuild` in a Render job to seed embeddings before starting the web service.
 4. Configure the web service with `python app.py` as the start command.
 
+## Codex Cloud Notes
+- The included `codex.yaml` defines a `web` task that installs dependencies and launches the Gradio app on port 7860.
+- Set the same environment variables you use locally (OpenAI keys, database URL) in Codex Cloud before starting the task.
+
 ## Troubleshooting
 - **Missing vector extension**: Run `CREATE EXTENSION IF NOT EXISTS vector;` on the Postgres instance.
 - **Ingestion errors**: Ensure the OpenAI key is valid and Postgres credentials allow write access.
