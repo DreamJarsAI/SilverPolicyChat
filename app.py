@@ -129,13 +129,7 @@ def create_interface() -> gr.Blocks:
         color: rgba(255, 255, 255, 0.88);
     }
 
-    .layout-row {
-        gap: 1.85rem;
-        align-items: stretch;
-    }
-
-    .chat-column,
-    .info-column {
+    .chat-column {
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
@@ -209,48 +203,6 @@ def create_interface() -> gr.Blocks:
         color: var(--silver-indigo);
     }
 
-    .info-card {
-        background: var(--panel-surface);
-        border-radius: 1.5rem;
-        padding: 2rem;
-        border: 1px solid var(--panel-border);
-        box-shadow: 0 20px 40px rgba(35, 21, 75, 0.16);
-        color: var(--text-primary);
-    }
-
-    .info-card h3 {
-        font-weight: 650;
-        margin-bottom: 1rem;
-    }
-
-    .info-card ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: grid;
-        gap: 0.85rem;
-    }
-
-    .info-card li {
-        display: grid;
-        grid-template-columns: 18px 1fr;
-        gap: 0.75rem;
-        align-items: start;
-        line-height: 1.5;
-        color: var(--text-secondary);
-    }
-
-    .info-card li::before {
-        content: "";
-        display: inline-flex;
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        margin-top: 0.45rem;
-        background: linear-gradient(135deg, rgba(95, 34, 217, 0.95), rgba(201, 182, 255, 0.95));
-        box-shadow: 0 0 0 4px rgba(95, 34, 217, 0.12);
-    }
-
     @media (max-width: 1024px) {
         .hero-block {
             padding: 2.25rem 2rem;
@@ -261,16 +213,8 @@ def create_interface() -> gr.Blocks:
             margin: 0 auto;
         }
 
-        .layout-row {
-            flex-direction: column;
-        }
-
         .send-row {
             justify-content: stretch;
-        }
-
-        .info-card {
-            padding: 1.75rem;
         }
     }
     """
@@ -301,7 +245,7 @@ def create_interface() -> gr.Blocks:
             status_bar = gr.Markdown("Not signed in.")
             logout_button = gr.Button("Log out", variant="secondary", visible=False)
 
-        with gr.Tabs():
+        with gr.Tabs() as auth_tabs:
             with gr.Tab("Login"):
                 login_username = gr.Textbox(label="Username", placeholder="nyustudent")
                 login_password = gr.Textbox(
@@ -359,47 +303,31 @@ def create_interface() -> gr.Blocks:
                 complete_reset = gr.Button("Reset password", variant="primary", visible=False)
 
         with gr.Group(visible=False) as chat_container:
-            with gr.Row(elem_classes=["layout-row"]):
-                with gr.Column(scale=3, elem_classes=["chat-column"]):
-                    chat = gr.Chatbot(
-                        label="Policy Assistant",
-                        type="messages",
-                        height=540,
-                        show_copy_button=True,
-                        elem_classes=["chatbot-panel"],
-                    )
+            with gr.Column(elem_classes=["chat-column"]):
+                chat = gr.Chatbot(
+                    label="Policy Assistant",
+                    type="messages",
+                    height=540,
+                    show_copy_button=True,
+                    elem_classes=["chatbot-panel"],
+                )
 
-                    with gr.Group(elem_classes=["input-card"]):
-                        message_box = gr.Textbox(
-                            label="Your question",
-                            placeholder="Ask about attendance, grading, scholarships, ...",
-                            lines=4,
-                            max_lines=8,
-                            elem_classes=["question-box"],
-                            interactive=False,
+                with gr.Group(elem_classes=["input-card"]):
+                    message_box = gr.Textbox(
+                        label="Your question",
+                        placeholder="Ask about attendance, grading, scholarships, ...",
+                        lines=4,
+                        max_lines=8,
+                        elem_classes=["question-box"],
+                        interactive=False,
+                    )
+                    with gr.Row(elem_classes=["send-row"]):
+                        send_button = gr.Button("Send", variant="primary", scale=0, interactive=False)
+                        clear_button = gr.Button(
+                            "Clear conversation",
+                            variant="secondary",
+                            scale=0,
                         )
-                        with gr.Row(elem_classes=["send-row"]):
-                            send_button = gr.Button("Send", variant="primary", scale=0, interactive=False)
-                            clear_button = gr.Button(
-                                "Clear conversation",
-                                variant="secondary",
-                                scale=0,
-                            )
-
-                with gr.Column(scale=2, elem_classes=["info-column"]):
-                    gr.Markdown(
-                        """
-                        <div class="info-card">
-                            <h3>How to get the most out of the assistant</h3>
-                            <ul>
-                                <li>Frame your scenario with key details like grade level, policy area, and stakeholders.</li>
-                                <li>Ask follow-up questions to clarify interpretations or explore alternative actions.</li>
-                                <li>Use the Clear button to start a new conversation when switching topics.</li>
-                            </ul>
-                        </div>
-                        """,
-                        elem_classes=["info-card"],
-                    )
 
         def handle_login(
             username: str,
@@ -414,6 +342,7 @@ def create_interface() -> gr.Blocks:
                     session,
                     gr.update(value=f"Signed in as **{payload['username']}**."),
                     gr.update(visible=True),
+                    gr.update(visible=False),
                     gr.update(visible=True),
                     gr.update(value="", interactive=True),
                     gr.update(interactive=True),
@@ -427,6 +356,7 @@ def create_interface() -> gr.Blocks:
                 session,
                 gr.update(value="Not signed in."),
                 gr.update(visible=False),
+                gr.update(visible=True),
                 gr.update(visible=False),
                 gr.update(value="", interactive=False),
                 gr.update(interactive=False),
@@ -442,6 +372,7 @@ def create_interface() -> gr.Blocks:
                 session_state,
                 status_bar,
                 logout_button,
+                auth_tabs,
                 chat_container,
                 message_box,
                 send_button,
@@ -457,6 +388,7 @@ def create_interface() -> gr.Blocks:
                 {"authenticated": False, "username": None, "email": None},
                 gr.update(value="Not signed in."),
                 gr.update(visible=False),
+                gr.update(visible=True),
                 gr.update(visible=False),
                 gr.update(value="", interactive=False),
                 gr.update(interactive=False),
@@ -472,6 +404,7 @@ def create_interface() -> gr.Blocks:
                 session_state,
                 status_bar,
                 logout_button,
+                auth_tabs,
                 chat_container,
                 message_box,
                 send_button,
