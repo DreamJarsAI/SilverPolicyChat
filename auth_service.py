@@ -213,6 +213,13 @@ def validate_email(email: str) -> Tuple[bool, str]:
     return True, ""
 
 
+def _as_utc(timestamp: datetime) -> datetime:
+    """Normalize potentially naive timestamps (e.g. from SQLite) to UTC-aware datetimes."""
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+    return timestamp.astimezone(timezone.utc)
+
+
 class AuthService:
     """Encapsulates user registration, authentication, and password reset flows."""
 
@@ -315,7 +322,8 @@ class AuthService:
             if not user.verification_hash or not user.verification_sent_at:
                 return False, "Request a new verification code to continue registration."
 
-            if datetime.now(timezone.utc) - user.verification_sent_at > self.verification_ttl:
+            sent_at = _as_utc(user.verification_sent_at)
+            if datetime.now(timezone.utc) - sent_at > self.verification_ttl:
                 return False, "Verification code expired. Request a new one."
 
             code_normalized = code.strip()
@@ -402,7 +410,8 @@ class AuthService:
             if not user or not user.reset_code_hash or not user.reset_requested_at:
                 return False, "Request a new reset code to continue."
 
-            if datetime.now(timezone.utc) - user.reset_requested_at > self.verification_ttl:
+            requested_at = _as_utc(user.reset_requested_at)
+            if datetime.now(timezone.utc) - requested_at > self.verification_ttl:
                 return False, "Reset code expired. Request a new one."
 
             code_normalized = code.strip()

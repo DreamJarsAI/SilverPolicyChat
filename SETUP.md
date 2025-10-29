@@ -20,14 +20,14 @@ pip install -r requirements.txt
 2. Populate the following:
    - `OPENAI_API_KEY` (required)
    - Optional: `OPENAI_ORGANIZATION`, `OPENAI_PROJECT`
-   - `DATABASE_URL` for Render/production deployments; local testing defaults to `sqlite:///app/policy_vectors.db` but you can override it with `SQLALCHEMY_DATABASE_URL` if needed (Postgres example: `postgresql://user:password@localhost:5432/policies`)
+   - Leave `DATABASE_URL` empty to use the bundled SQLite database (`policy_vectors.db`) locally. When preparing for Render or another host, set `DATABASE_URL` (or `SQLALCHEMY_DATABASE_URL`) to your managed Postgres instance (example: `postgresql://user:password@hostname:5432/policies`).
 3. Additional tuning knobs (`OPENAI_COMPLETION_MODEL`, `CHUNK_SIZE`, etc.) are optional.
 
 > **Git tip:** `.gitignore` already excludes `.env` and the SQLite cache (`policy_vectors.db*`), so you can push the project to GitHub without leaking credentials or large binaries.
 
 ## 3. Seed Policy Data
 1. Place PDF files under `policies/` (filenames are used as document titles).
-2. Run the ingestion script to populate Postgres:
+2. Run the ingestion script to populate your configured database:
    ```bash
    python build_index.py --rebuild
    ```
@@ -50,9 +50,9 @@ Add integration tests that stub OpenAI responses for CI environments without net
 
 ## Render.com Deployment Notes
 1. Provision a Postgres instance and enable `pgvector`.
-2. Add environment variables (`OPENAI_API_KEY`, `DATABASE_URL`, etc.) in Render’s dashboard.
-3. Run `python build_index.py --rebuild` in a Render job to seed embeddings before starting the web service.
-4. Configure the web service with `python app.py` as the start command.
+2. Add environment variables (`OPENAI_API_KEY`, `DATABASE_URL`, optional SMTP settings) in Render’s dashboard.
+3. Run `python build_index.py --rebuild` once in a Render job or shell to seed embeddings before starting the web service; this populates documents + embeddings in Postgres.
+4. Configure the web service with `python app.py` as the start command. Subsequent deploys reuse the stored vectors.
 
 ## Codex Cloud Notes
 - The included `codex.yaml` defines a `web` task that installs dependencies and launches the Gradio app on port 7860 from the repo root.

@@ -217,6 +217,26 @@ def create_interface() -> gr.Blocks:
             justify-content: stretch;
         }
     }
+
+    .disclaimer-text {
+        margin-top: 2.5rem;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+    }
+
+    .gradio-container header,
+    .gradio-container footer,
+    .gradio-container .footer,
+    .gradio-container [data-testid="share-btn"],
+    .gradio-container [data-testid="share-button"],
+    .gradio-container [data-testid="settings-button"],
+    .gradio-container button[aria-label="Settings"],
+    .gradio-container [aria-label="Use via API"],
+    .gradio-container a[href*="gradio.app"],
+    .gradio-container a[href*="gradio.space"] {
+        display: none !important;
+    }
     """
 
     with gr.Blocks(
@@ -229,7 +249,7 @@ def create_interface() -> gr.Blocks:
             <div class="hero-block">
                 <div class="hero-content">
                     <h1>NYU Silver Policy Assistant</h1>
-                    <p>Get grounded guidance on school policy decisions for the NYU Silver community.</p>
+                    <p>Answer your questions on school policies and precedures 24/7.</p>
                 </div>
             </div>
             """,
@@ -329,6 +349,11 @@ def create_interface() -> gr.Blocks:
                             scale=0,
                         )
 
+        gr.Markdown(
+            "AI can make mistakes and you should check with official documents for most accurate answers",
+            elem_classes=["disclaimer-text"],
+        )
+
         def handle_login(
             username: str,
             password: str,
@@ -342,7 +367,7 @@ def create_interface() -> gr.Blocks:
                     session,
                     gr.update(value=f"Signed in as **{payload['username']}**."),
                     gr.update(visible=True),
-                    gr.update(visible=False),
+                    gr.update(visible=False, selected=0),
                     gr.update(visible=True),
                     gr.update(value="", interactive=True),
                     gr.update(interactive=True),
@@ -356,7 +381,7 @@ def create_interface() -> gr.Blocks:
                 session,
                 gr.update(value="Not signed in."),
                 gr.update(visible=False),
-                gr.update(visible=True),
+                gr.update(visible=True, selected=0),
                 gr.update(visible=False),
                 gr.update(value="", interactive=False),
                 gr.update(interactive=False),
@@ -388,7 +413,7 @@ def create_interface() -> gr.Blocks:
                 {"authenticated": False, "username": None, "email": None},
                 gr.update(value="Not signed in."),
                 gr.update(visible=False),
-                gr.update(visible=True),
+                gr.update(visible=True, selected=0),
                 gr.update(visible=False),
                 gr.update(value="", interactive=False),
                 gr.update(interactive=False),
@@ -465,13 +490,15 @@ def create_interface() -> gr.Blocks:
             success, message = auth_service.complete_registration(state or {}, code, password)
             if success:
                 return (
-                    gr.update(value=f"✅ {message}", visible=True),
+                    gr.update(value="", visible=False),
                     {"username": None, "email": None, "code_sent": False},
                     gr.update(value="", visible=False),
                     gr.update(value="", visible=False),
                     gr.update(visible=False),
                     gr.update(value=""),
                     gr.update(value=""),
+                    gr.update(value=f"✅ {message}", visible=True),
+                    gr.update(visible=True, selected=0),
                 )
 
             keep_state = state or {"username": None, "email": None, "code_sent": False}
@@ -483,6 +510,8 @@ def create_interface() -> gr.Blocks:
                 gr.update(visible=True),
                 gr.update(value=keep_state.get("username") or ""),
                 gr.update(value=keep_state.get("email") or ""),
+                gr.update(),
+                gr.update(visible=True, selected=1),
             )
 
         complete_registration.click(
@@ -496,6 +525,8 @@ def create_interface() -> gr.Blocks:
                 complete_registration,
                 register_username,
                 register_email,
+                login_feedback,
+                auth_tabs,
             ],
         )
 
@@ -544,12 +575,14 @@ def create_interface() -> gr.Blocks:
             success, message = auth_service.complete_password_reset(state or {}, code, password)
             if success:
                 return (
-                    gr.update(value=f"✅ {message}", visible=True),
+                    gr.update(value="", visible=False),
                     {"email": None, "code_sent": False},
                     gr.update(value="", visible=False),
                     gr.update(value="", visible=False),
                     gr.update(visible=False),
                     gr.update(value=""),
+                    gr.update(value=f"✅ {message}", visible=True),
+                    gr.update(visible=True, selected=0),
                 )
 
             keep_state = state or {"email": None, "code_sent": False}
@@ -560,6 +593,8 @@ def create_interface() -> gr.Blocks:
                 gr.update(value="", visible=True),
                 gr.update(visible=True),
                 gr.update(value=keep_state.get("email") or ""),
+                gr.update(),
+                gr.update(visible=True, selected=2),
             )
 
         complete_reset.click(
@@ -572,6 +607,8 @@ def create_interface() -> gr.Blocks:
                 reset_password,
                 complete_reset,
                 reset_email,
+                login_feedback,
+                auth_tabs,
             ],
         )
 
@@ -635,4 +672,4 @@ def create_interface() -> gr.Blocks:
 
 if __name__ == "__main__":
     interface = create_interface()
-    interface.launch()
+    interface.launch(share=False)
