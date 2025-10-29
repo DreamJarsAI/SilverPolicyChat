@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -672,4 +673,5 @@ def create_interface() -> gr.Blocks:
 
 if __name__ == "__main__":
     interface = create_interface()
-    interface.launch(share=False)
+    port = int(os.environ.get("PORT", "7860"))
+    interface.launch(server_name="0.0.0.0", server_port=port, share=False)
