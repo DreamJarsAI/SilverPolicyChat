@@ -348,16 +348,19 @@ class AuthService:
         return True, "Registration complete. You can now log in with your username and password."
 
     def authenticate(self, username: str, password: str) -> Tuple[bool, str, Dict[str, Any] | None]:
-        username_normalized = username.strip().lower()
+        identifier = (username or "").strip().lower()
         password = password or ""
 
         with self.store.session() as session:
-            user = session.execute(
-                select(UserAccount).where(UserAccount.username == username_normalized)
-            ).scalar_one_or_none()
+            if "@" in identifier:
+                user = session.execute(select(UserAccount).where(UserAccount.email == identifier)).scalar_one_or_none()
+            else:
+                user = session.execute(
+                    select(UserAccount).where(UserAccount.username == identifier)
+                ).scalar_one_or_none()
 
             if not user:
-                return False, "Account not found. Check your username or register for a new account.", None
+                return False, "Account not found. Check your username/email or register for a new account.", None
 
             if not user.is_verified:
                 return False, "Account not verified. Complete registration before logging in.", None
@@ -366,7 +369,7 @@ class AuthService:
                 return False, "Incorrect password. Try again or reset your password.", None
 
         return True, "Login successful.", {
-            "username": username_normalized,
+            "username": user.username,
             "email": user.email,
         }
 
@@ -431,4 +434,3 @@ class AuthService:
             session.flush()
 
         return True, "Password updated. You can now log in with your new credentials."
-

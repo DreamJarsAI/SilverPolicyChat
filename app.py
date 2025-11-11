@@ -268,7 +268,7 @@ def create_interface() -> gr.Blocks:
 
         with gr.Tabs() as auth_tabs:
             with gr.Tab("Login"):
-                login_username = gr.Textbox(label="Username", placeholder="nyustudent")
+                login_username = gr.Textbox(label="Username or email", placeholder="nyustudent or netid@nyu.edu")
                 login_password = gr.Textbox(
                     label="Password",
                     type="password",
