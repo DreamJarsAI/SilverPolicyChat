@@ -28,32 +28,8 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-@lru_cache(maxsize=1)
-def _bootstrap() -> tuple[PolicyAgentContext, object, AuthService]:
-    settings = load_settings()
-    client = OpenAI(
-        api_key=settings.openai_api_key,
-        organization=settings.openai_organization,
-        project=settings.openai_project,
-    )
-    store = PolicyStore(settings.database_url)
-    try:
-        store.ensure_schema()  # Ensures tables exist; dimension inferred from metadata.
-    except RuntimeError as exc:
-        logger.info("Schema check skipped: %s", exc)
-    agent = build_agent(settings)
-    context = PolicyAgentContext(store=store, client=client, settings=settings)
-    email_sender = EmailSender(EmailSettings.from_settings(settings))
-    auth_service = AuthService(store, email_sender, SecretHasher())
-    return context, agent, auth_service
-
-
-def create_interface() -> gr.Blocks:
-    context, agent, auth_service = _bootstrap()
-    runner = OpenAIAgentRunner()
-
-    custom_css = """
+APP_THEME = gr.themes.Soft()
+CUSTOM_CSS = """
     :root {
         --silver-indigo: #4b1d9b;
         --silver-violet: #7a3bff;
@@ -238,12 +214,35 @@ def create_interface() -> gr.Blocks:
     .gradio-container a[href*="gradio.space"] {
         display: none !important;
     }
-    """
+"""
+
+
+@lru_cache(maxsize=1)
+def _bootstrap() -> tuple[PolicyAgentContext, object, AuthService]:
+    settings = load_settings()
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        organization=settings.openai_organization,
+        project=settings.openai_project,
+    )
+    store = PolicyStore(settings.database_url)
+    try:
+        store.ensure_schema()  # Ensures tables exist; dimension inferred from metadata.
+    except RuntimeError as exc:
+        logger.info("Schema check skipped: %s", exc)
+    agent = build_agent(settings)
+    context = PolicyAgentContext(store=store, client=client, settings=settings)
+    email_sender = EmailSender(EmailSettings.from_settings(settings))
+    auth_service = AuthService(store, email_sender, SecretHasher())
+    return context, agent, auth_service
+
+
+def create_interface() -> gr.Blocks:
+    context, agent, auth_service = _bootstrap()
+    runner = OpenAIAgentRunner()
 
     with gr.Blocks(
         title="NYU Silver Policy Assistant",
-        theme=gr.themes.Soft(),
-        css=custom_css,
     ) as demo:
         gr.Markdown(
             """
@@ -327,7 +326,6 @@ def create_interface() -> gr.Blocks:
             with gr.Column(elem_classes=["chat-column"]):
                 chat = gr.Chatbot(
                     label="Policy Assistant",
-                    type="messages",
                     height=540,
                     show_copy_button=True,
                     elem_classes=["chatbot-panel"],
@@ -674,4 +672,4 @@ def create_interface() -> gr.Blocks:
 if __name__ == "__main__":
     interface = create_interface()
     port = int(os.environ.get("PORT", "7860"))
-    interface.launch(server_name="0.0.0.0", server_port=port, share=False)
+    interface.launch(server_name="0.0.0.0", server_port=port, share=False, theme=APP_THEME, css=CUSTOM_CSS)
