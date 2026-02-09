@@ -327,7 +327,6 @@ def create_interface() -> gr.Blocks:
                 chat = gr.Chatbot(
                     label="Policy Assistant",
                     height=540,
-                    show_copy_button=True,
                     elem_classes=["chatbot-panel"],
                 )
 
